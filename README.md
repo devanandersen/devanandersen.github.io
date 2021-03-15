@@ -1,1 +1,1 @@
-devanandersen.com, just a landing page for right now.
+[https://devanandersen.com](https://devanandersen.com), just a landing page for right now.
