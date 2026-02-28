@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import './Game.css';
 
 // ─── Sprite sheet constants ────────────────────────────────────────────────
 // Sheet layout: 6 cols × 3 rows, 226 × 261 px per frame
@@ -10,8 +11,9 @@ const JUMP_FRAME = 9;                    // row 1, col 3
 const DEAD_FRAME = 11;                   // row 1, col 5
 
 // On-screen display size (maintains 226:261 aspect ratio)
-const CHAR_H = 96;
-const CHAR_W = Math.round(CHAR_H * FRAME_W / FRAME_H); // ≈ 83 px
+const CHAR_H        = 96;
+const CHAR_W        = Math.round(CHAR_H * FRAME_W / FRAME_H); // ≈ 83 px
+const CHAR_FOOT_OFF = 10; // empty px below feet in sprite frame
 
 // ─── Background removal (green-screen keying) ─────────────────────────────
 // Sprite sheet is flattened onto solid green. Any pixel where green
@@ -405,7 +407,7 @@ export default function Game() {
 
         char: {
           x:         110,
-          y:         gndY - CHAR_H,
+          y:         gndY - CHAR_H + CHAR_FOOT_OFF,
           vy:        0,
           grounded:  true,
           frame:     0,
@@ -510,7 +512,7 @@ export default function Game() {
         const ch = g.char;
         ch.vy += physicsRef.current.gravity;
         ch.y  += ch.vy;
-        const floor = g.gndY - CHAR_H;
+        const floor = g.gndY - CHAR_H + CHAR_FOOT_OFF;
         if (ch.y >= floor) {
           ch.y        = floor;
           ch.vy       = 0;
@@ -608,190 +610,96 @@ export default function Game() {
     };
   }, []);
 
-  // ── Styles ─────────────────────────────────────────────────────────────
-  const pxFont = '"Press Start 2P", monospace';
-
-  const overlayBase = {
-    position:       'absolute',
-    top:            0,
-    left:           0,
-    right:          0,
-    bottom:         `${(1 - GROUND_RATIO) * 100}%`,
-    display:        'flex',
-    flexDirection:  'column',
-    alignItems:     'center',
-    justifyContent: 'center',
-    fontFamily:     pxFont,
-    color:          '#e0dfff',
-    pointerEvents:  'none',
-    userSelect:     'none',
-  };
+  const overlayStyle = { bottom: `${(1 - GROUND_RATIO) * 100}%` };
 
   return (
-    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <div class="game-root">
 
-      <canvas ref={canvasRef} style={{ display: 'block' }} />
+      <canvas ref={canvasRef} class="game-canvas" />
 
       {/* ── Score HUD ── */}
-      <div style={{
-        position:      'absolute',
-        top:           18,
-        right:         26,
-        fontFamily:    pxFont,
-        textAlign:     'right',
-        lineHeight:    '1.9',
-        pointerEvents: 'none',
-        userSelect:    'none',
-      }}>
-        <div ref={hiElRef}    style={{ fontSize: 10, color: '#6060a0' }}>HI 00000</div>
-        <div ref={scoreElRef} style={{ fontSize: 13, color: '#c8c8ee' }}>00000</div>
+      <div class="score-hud">
+        <div ref={hiElRef}    class="score-hi">HI 00000</div>
+        <div ref={scoreElRef} class="score-current">00000</div>
       </div>
 
       {/* ── Intro overlay ── */}
       {phase === 'intro' && (
-        <div style={overlayBase}>
-          <div style={{
-            fontSize:      'clamp(18px, 3.5vw, 36px)',
-            letterSpacing: '0.08em',
-            marginBottom:  10,
-            color:         '#ffffff',
-            animation:     'fadeIn 0.6s ease both',
-          }}>
-            DEVAN ANDERSEN
-          </div>
-          <div style={{
-            fontSize:      'clamp(8px, 1.2vw, 12px)',
-            color:         '#7070b8',
-            marginBottom:  60,
-            letterSpacing: '0.15em',
-            animation:     'fadeIn 0.8s ease 0.2s both',
-          }}>
-            SOFTWARE ENGINEER
-          </div>
-          <div style={{
-            fontSize:  'clamp(7px, 1vw, 11px)',
-            color:     '#4848a0',
-            animation: 'blink 1.1s step-end infinite',
-          }}>
-            PRESS SPACE OR TAP TO START
-          </div>
+        <div class="overlay" style={overlayStyle}>
+          <div class="overlay-title">DEVAN ANDERSEN</div>
+          <div class="overlay-subtitle">SENIOR SOFTWARE ENGINEER</div>
+          <div class="overlay-prompt">PRESS SPACE OR TAP TO START</div>
         </div>
       )}
 
       {/* ── Game-over overlay ── */}
       {phase === 'gameover' && (
-        <div style={overlayBase}>
-          <div style={{
-            fontSize:      'clamp(16px, 3vw, 28px)',
-            color:         '#ff5555',
-            marginBottom:  22,
-            letterSpacing: '0.05em',
-          }}>
-            GAME OVER
-          </div>
-          <div style={{
-            fontSize:  'clamp(7px, 1vw, 11px)',
-            color:     '#4848a0',
-            marginTop: 36,
-            animation: 'blink 1.1s step-end infinite',
-          }}>
-            PRESS SPACE OR TAP TO RETRY
-          </div>
+        <div class="overlay" style={overlayStyle}>
+          <div class="overlay-gameover-title">GAME OVER</div>
+          <div class="overlay-gameover-prompt">PRESS SPACE OR TAP TO RETRY</div>
         </div>
       )}
 
       {/* ── Settings button ── */}
       <button
+        class={`gear-btn${settingsOpen ? ' open' : ''}`}
         onClick={() => setSettingsOpen(o => !o)}
-        style={{
-          position:   'absolute',
-          top:        18,
-          left:       20,
-          background: 'none',
-          border:     'none',
-          padding:    0,
-          cursor:     'pointer',
-          opacity:    settingsOpen ? 1 : 0.55,
-          transition: 'opacity 0.15s',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.opacity = 1; }}
-        onMouseLeave={e => { e.currentTarget.style.opacity = settingsOpen ? 1 : 0.55; }}
       >
         <GearIcon size={16} color="#9090e0" />
       </button>
 
       {/* ── Settings panel ── */}
       {settingsOpen && (
-        <div style={{
-          position:      'absolute',
-          top:           44,
-          left:          20,
-          right:         20,
-          maxWidth:      480,
-          background:    '#0a0818',
-          border:        '1px solid #4848a0',
-          padding:       '14px 18px',
-          fontFamily:    pxFont,
-          fontSize:      8,
-          color:         '#c8c8ee',
-          display:       'flex',
-          flexDirection: 'column',
-          gap:           12,
-          boxSizing:     'border-box',
-        }}>
-          {/* Music toggle */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 24 }}>
+        <div class="settings-panel">
+          <div class="settings-row">
             <span>MUSIC</span>
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div class="settings-toggle-group">
               {['OFF', 'ON'].map(opt => (
                 <button
                   key={opt}
+                  class="settings-toggle-btn"
                   onClick={() => setMusic(opt === 'ON')}
                   style={{
-                    fontFamily: pxFont, fontSize: 7,
                     background: (opt === 'ON') === music ? '#4848a0' : 'transparent',
-                    border:     '1px solid #4848a0',
                     color:      (opt === 'ON') === music ? '#ffffff' : '#4848a0',
-                    padding:    '4px 7px', cursor: 'pointer',
                   }}
                 >{opt}</button>
               ))}
             </div>
           </div>
 
-          <div style={{ borderTop: '1px solid #2a2a50', margin: '2px 0' }} />
+          <div class="settings-divider" />
 
-          {/* Grouped sliders */}
           {[
             { heading: 'MOVEMENT', sliders: [
-              { label: 'GRAVITY',  key: 'gravity',   min: 0.1,  max: 2,    step: 0.01,  parse: parseFloat },
-              { label: 'JUMP',     key: 'jumpForce', min: -30,  max: -2,   step: 0.5,   parse: parseFloat },
+              { label: 'GRAVITY', key: 'gravity',   min: 0.1,  max: 2,    step: 0.01,  parse: parseFloat },
+              { label: 'JUMP',    key: 'jumpForce', min: -30,  max: -2,   step: 0.5,   parse: parseFloat },
             ]},
             { heading: 'SPEED', sliders: [
-              { label: 'INIT',     key: 'initSpeed', min: 1,    max: 20,   step: 0.5,   parse: parseFloat },
-              { label: 'MAX',      key: 'maxSpeed',  min: 5,    max: 50,   step: 1,     parse: parseFloat },
-              { label: 'RATE',     key: 'speedRate', min: 0.001,max: 0.05, step: 0.001, parse: parseFloat },
+              { label: 'INIT',    key: 'initSpeed', min: 1,    max: 20,   step: 0.5,   parse: parseFloat },
+              { label: 'MAX',     key: 'maxSpeed',  min: 5,    max: 50,   step: 1,     parse: parseFloat },
+              { label: 'RATE',    key: 'speedRate', min: 0.001,max: 0.05, step: 0.001, parse: parseFloat },
             ]},
             { heading: 'OBSTACLES', sliders: [
-              { label: 'MIN GAP',  key: 'minGap',    min: 100,  max: 800,  step: 10,    parse: parseInt   },
-              { label: 'MAX GAP',  key: 'maxGap',    min: 400,  max: 1600, step: 10,    parse: parseInt   },
+              { label: 'MIN GAP', key: 'minGap',    min: 100,  max: 800,  step: 10,    parse: parseInt   },
+              { label: 'MAX GAP', key: 'maxGap',    min: 400,  max: 1600, step: 10,    parse: parseInt   },
             ]},
           ].map(({ heading, sliders }) => (
             <div key={heading}>
-              <div style={{ fontSize: 7, marginBottom: 8, letterSpacing: '0.1em' }}>{heading}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px' }}>
+              <div class="settings-section-heading">{heading}</div>
+              <div class="settings-slider-grid">
                 {sliders.map(({ label, key, min, max, step, parse }) => (
-                  <div key={key} style={{ flex: '1 1 calc(50% - 7px)', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#7070b0', fontSize: 7 }}>{label}</span>
-                      <span style={{ color: '#c8c8ee', fontSize: 7 }}>{physics[key]}</span>
+                  <div key={key} class="settings-slider-item">
+                    <div class="settings-slider-label-row">
+                      <span class="settings-slider-label">{label}</span>
+                      <span class="settings-slider-value">{physics[key]}</span>
                     </div>
                     <input
+                      class="settings-slider"
                       type="range"
                       min={min} max={max} step={step}
                       value={physics[key]}
                       onInput={e => setPhysics(p => ({ ...p, [key]: parse(e.target.value) }))}
-                      style={{ width: '100%', accentColor: '#4848a0', cursor: 'pointer' }}
                     />
                   </div>
                 ))}
@@ -799,53 +707,22 @@ export default function Game() {
             </div>
           ))}
 
-          {/* Reset */}
-          <button
-            onClick={() => setPhysics(PHYSICS_DEFAULTS)}
-            style={{
-              fontFamily: pxFont, fontSize: 7,
-              background: 'transparent', border: '1px solid #4848a0',
-              color: '#4848a0', padding: '5px 0', cursor: 'pointer', width: '100%',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#4848a0'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#4848a0'; }}
-          >
+          <div class="settings-divider" />
+
+          <button class="settings-reset-btn" onClick={() => setPhysics(PHYSICS_DEFAULTS)}>
             RESET DEFAULTS
           </button>
         </div>
       )}
 
       {/* ── Social links ── */}
-      <div style={{
-        position:        'absolute',
-        top:             `${GROUND_RATIO * 100 + 3}%`,
-        left:            '50%',
-        transform:       'translateX(-50%)',
-        fontFamily:      pxFont,
-        fontSize:        9,
-        display:         'flex',
-        gap:             20,
-        whiteSpace:      'nowrap',
-        pointerEvents:   'auto',
-      }}>
+      <div class="social-links" style={{ top: `${GROUND_RATIO * 100 + 3}%` }}>
         {[
           { label: 'GITHUB',   href: 'https://github.com/devanandersen' },
           { label: 'LINKEDIN', href: 'https://www.linkedin.com/in/devan-a-68211b73/' },
           { label: 'TWITTER',  href: 'https://x.com/devandersen' },
         ].map(({ label, href }) => (
-          <a
-            key={label}
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              color:          '#4848a0',
-              textDecoration: 'none',
-              transition:     'color 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#9090e0'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#4848a0'; }}
-          >
+          <a key={label} href={href} target="_blank" rel="noopener noreferrer" class="social-link">
             {label}
           </a>
         ))}
