@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import './Game.css';
+import { GROUND_RATIO } from './constants';
+import { scheduleMusic } from './music';
+import ScoreHud from './ScoreHud';
+import Overlay from './Overlay';
+import Settings from './Settings';
+import SocialLinks from './SocialLinks';
 
 // ─── Sprite sheet constants ────────────────────────────────────────────────
 // Sheet layout: 6 cols × 3 rows, 226 × 261 px per frame
@@ -63,9 +69,6 @@ const MAX_GAP_PX  = 950;
 
 // ─── Animation ────────────────────────────────────────────────────────────
 const ANIM_FPS    = 10;
-
-// ─── Ground ───────────────────────────────────────────────────────────────
-const GROUND_RATIO = 0.76;
 
 // ─────────────────────────────────────────────────────────────────────────
 //  City obstacle bitmaps
@@ -249,80 +252,17 @@ function drawGround(ctx, w, groundY, canvasH, scrollOff) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Chiptune music
+//  Physics defaults
 // ─────────────────────────────────────────────────────────────────────────
-const MUSIC_STEP = 60 / 140 / 2; // 8th note at 140 BPM
-
-const MUSIC_MELODY = [
-  523, 659, 784, 659, 523, 659, 587,   0,
-  494, 587, 740, 587, 494, 587, 523,   0,
-  523, 659, 784, 659, 523, 659, 880, 784,
-  698, 659, 587, 523,   0,   0,   0,   0,
-];
-
-const MUSIC_BASS = [
-  131,   0, 165,   0, 196,   0, 165,   0,
-  123,   0, 147,   0, 185,   0, 147,   0,
-  131,   0, 165,   0, 196,   0, 220,   0,
-  175,   0, 131,   0, 196,   0, 131,   0,
-];
-
-function scheduleNote(ctx, freq, type, vol, t, dur) {
-  const osc  = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = type;
-  osc.frequency.value = freq;
-  gain.gain.setValueAtTime(vol, t);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.8);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(t);
-  osc.stop(t + dur);
-}
-
-function scheduleMusic(ctx, timerRef, loopStart) {
-  const dur = MUSIC_MELODY.length * MUSIC_STEP;
-  const t   = loopStart ?? ctx.currentTime + 0.05;
-  MUSIC_MELODY.forEach((f, i) => {
-    if (f) scheduleNote(ctx, f, 'square',   0.06, t + i * MUSIC_STEP, MUSIC_STEP);
-  });
-  MUSIC_BASS.forEach((f, i) => {
-    if (f) scheduleNote(ctx, f, 'triangle', 0.05, t + i * MUSIC_STEP, MUSIC_STEP * 1.9);
-  });
-  const ms = (t + dur - 0.4 - ctx.currentTime) * 1000;
-  timerRef.current = setTimeout(
-    () => { if (ctx.state === 'running') scheduleMusic(ctx, timerRef, t + dur); },
-    Math.max(0, ms),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-//  Pixel gear icon
-// ─────────────────────────────────────────────────────────────────────────
-const GEAR_GRID = [
-  [0,0,1,1,1,1,0,0],
-  [0,1,1,1,1,1,1,0],
-  [1,1,1,0,0,1,1,1],
-  [1,1,0,0,0,0,1,1],
-  [1,1,0,0,0,0,1,1],
-  [1,1,1,0,0,1,1,1],
-  [0,1,1,1,1,1,1,0],
-  [0,0,1,1,1,1,0,0],
-];
-
-function GearIcon({ size = 16, color = '#4848a0' }) {
-  const px = size / 8;
-  return (
-    <svg width={size} height={size} style={{ display: 'block', imageRendering: 'pixelated' }}>
-      {GEAR_GRID.flatMap((row, r) =>
-        row.map((on, c) => on
-          ? <rect key={`${r}-${c}`} x={c * px} y={r * px} width={px} height={px} fill={color} />
-          : null
-        )
-      )}
-    </svg>
-  );
-}
+const PHYSICS_DEFAULTS = {
+  gravity:   GRAVITY,
+  jumpForce: JUMP_FORCE,
+  initSpeed: INIT_SPEED,
+  maxSpeed:  MAX_SPEED,
+  speedRate: SPEED_RATE,
+  minGap:    MIN_GAP_PX,
+  maxGap:    MAX_GAP_PX,
+};
 
 // ─────────────────────────────────────────────────────────────────────────
 //  Main Game component
@@ -345,15 +285,6 @@ export default function Game() {
   const audioCtxRef   = useRef(null);
   const musicTimerRef = useRef(null);
 
-  const PHYSICS_DEFAULTS = {
-    gravity:   GRAVITY,
-    jumpForce: JUMP_FORCE,
-    initSpeed: INIT_SPEED,
-    maxSpeed:  MAX_SPEED,
-    speedRate: SPEED_RATE,
-    minGap:    MIN_GAP_PX,
-    maxGap:    MAX_GAP_PX,
-  };
   const [physics, setPhysics] = useState(PHYSICS_DEFAULTS);
   const physicsRef = useRef(physics);
   useEffect(() => { physicsRef.current = physics; }, [physics]);
@@ -610,124 +541,21 @@ export default function Game() {
     };
   }, []);
 
-  const overlayStyle = { bottom: `${(1 - GROUND_RATIO) * 100}%` };
-
   return (
     <div class="game-root">
-
       <canvas ref={canvasRef} class="game-canvas" />
-
-      {/* ── Score HUD ── */}
-      <div class="score-hud">
-        <div ref={hiElRef}    class="score-hi">HI 00000</div>
-        <div ref={scoreElRef} class="score-current">00000</div>
-      </div>
-
-      {/* ── Intro overlay ── */}
-      {phase === 'intro' && (
-        <div class="overlay" style={overlayStyle}>
-          <div class="overlay-title">DEVAN ANDERSEN</div>
-          <div class="overlay-subtitle">SENIOR SOFTWARE ENGINEER</div>
-          <div class="overlay-prompt">PRESS SPACE OR TAP TO START</div>
-        </div>
-      )}
-
-      {/* ── Game-over overlay ── */}
-      {phase === 'gameover' && (
-        <div class="overlay" style={overlayStyle}>
-          <div class="overlay-gameover-title">GAME OVER</div>
-          <div class="overlay-gameover-prompt">PRESS SPACE OR TAP TO RETRY</div>
-        </div>
-      )}
-
-      {/* ── Settings button ── */}
-      <button
-        class={`gear-btn${settingsOpen ? ' open' : ''}`}
-        onClick={() => setSettingsOpen(o => !o)}
-      >
-        <GearIcon size={16} color="#9090e0" />
-      </button>
-
-      {/* ── Settings panel ── */}
-      {settingsOpen && (
-        <div class="settings-panel">
-          <div class="settings-row">
-            <span>MUSIC</span>
-            <div class="settings-toggle-group">
-              {['OFF', 'ON'].map(opt => (
-                <button
-                  key={opt}
-                  class="settings-toggle-btn"
-                  onClick={() => setMusic(opt === 'ON')}
-                  style={{
-                    background: (opt === 'ON') === music ? '#4848a0' : 'transparent',
-                    color:      (opt === 'ON') === music ? '#ffffff' : '#4848a0',
-                  }}
-                >{opt}</button>
-              ))}
-            </div>
-          </div>
-
-          <div class="settings-divider" />
-
-          {[
-            { heading: 'MOVEMENT', sliders: [
-              { label: 'GRAVITY', key: 'gravity',   min: 0.1,  max: 2,    step: 0.01,  parse: parseFloat },
-              { label: 'JUMP',    key: 'jumpForce', min: -30,  max: -2,   step: 0.5,   parse: parseFloat },
-            ]},
-            { heading: 'SPEED', sliders: [
-              { label: 'INIT',    key: 'initSpeed', min: 1,    max: 20,   step: 0.5,   parse: parseFloat },
-              { label: 'MAX',     key: 'maxSpeed',  min: 5,    max: 50,   step: 1,     parse: parseFloat },
-              { label: 'RATE',    key: 'speedRate', min: 0.001,max: 0.05, step: 0.001, parse: parseFloat },
-            ]},
-            { heading: 'OBSTACLES', sliders: [
-              { label: 'MIN GAP', key: 'minGap',    min: 100,  max: 800,  step: 10,    parse: parseInt   },
-              { label: 'MAX GAP', key: 'maxGap',    min: 400,  max: 1600, step: 10,    parse: parseInt   },
-            ]},
-          ].map(({ heading, sliders }) => (
-            <div key={heading}>
-              <div class="settings-section-heading">{heading}</div>
-              <div class="settings-slider-grid">
-                {sliders.map(({ label, key, min, max, step, parse }) => (
-                  <div key={key} class="settings-slider-item">
-                    <div class="settings-slider-label-row">
-                      <span class="settings-slider-label">{label}</span>
-                      <span class="settings-slider-value">{physics[key]}</span>
-                    </div>
-                    <input
-                      class="settings-slider"
-                      type="range"
-                      min={min} max={max} step={step}
-                      value={physics[key]}
-                      onInput={e => setPhysics(p => ({ ...p, [key]: parse(e.target.value) }))}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          <div class="settings-divider" />
-
-          <button class="settings-reset-btn" onClick={() => setPhysics(PHYSICS_DEFAULTS)}>
-            RESET DEFAULTS
-          </button>
-        </div>
-      )}
-
-      {/* ── Social links ── */}
-      <div class="social-links" style={{ top: `${GROUND_RATIO * 100 + 3}%` }}>
-        {[
-          { label: 'GITHUB',   href: 'https://github.com/devanandersen' },
-          { label: 'LINKEDIN', href: 'https://www.linkedin.com/in/devan-a-68211b73/' },
-          { label: 'TWITTER',  href: 'https://x.com/devandersen' },
-        ].map(({ label, href }) => (
-          <a key={label} href={href} target="_blank" rel="noopener noreferrer" class="social-link">
-            {label}
-          </a>
-        ))}
-      </div>
-
+      <ScoreHud hiRef={hiElRef} scoreRef={scoreElRef} />
+      <Overlay phase={phase} />
+      <Settings
+        settingsOpen={settingsOpen}
+        setSettingsOpen={setSettingsOpen}
+        music={music}
+        setMusic={setMusic}
+        physics={physics}
+        setPhysics={setPhysics}
+        physicsDefaults={PHYSICS_DEFAULTS}
+      />
+      <SocialLinks />
     </div>
   );
 }
