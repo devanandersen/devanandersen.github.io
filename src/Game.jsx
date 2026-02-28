@@ -599,14 +599,16 @@ export default function Game() {
 
       {/* ── Social links ── */}
       <div style={{
-        position:      'absolute',
-        bottom:        20,
-        right:         26,
-        fontFamily:    pxFont,
-        fontSize:      9,
-        display:       'flex',
-        gap:           20,
-        pointerEvents: 'auto',
+        position:        'absolute',
+        top:             `${GROUND_RATIO * 100 + 3}%`,
+        left:            '50%',
+        transform:       'translateX(-50%)',
+        fontFamily:      pxFont,
+        fontSize:        9,
+        display:         'flex',
+        gap:             20,
+        whiteSpace:      'nowrap',
+        pointerEvents:   'auto',
       }}>
         {[
           { label: 'GITHUB',   href: 'https://github.com/devanandersen' },
