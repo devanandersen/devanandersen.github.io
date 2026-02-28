@@ -66,86 +66,79 @@ const ANIM_FPS    = 10;
 const GROUND_RATIO = 0.76;
 
 // ─────────────────────────────────────────────────────────────────────────
-//  Cactus obstacle bitmaps
+//  City obstacle bitmaps
+//  palette indices: 0 = transparent, 1+ = palette[index - 1]
 // ─────────────────────────────────────────────────────────────────────────
-const CACTUS_DEFS = [
-  // Type 0 — single medium
+const OBSTACLE_DEFS = [
+  // Type 0 — street lamp
+  // 1=pole  2=lamp
   {
     scale: 7,
+    palette: ['#5c5c80', '#fce060'],
     rows: [
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,1,1,1,0,0,0],
-      [1,1,1,1,1,1,0],
-      [1,1,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
+      [0,0,2,2,0],
+      [0,0,2,2,0],
+      [0,1,1,0,0],
+      [0,0,1,0,0],
+      [0,0,1,0,0],
+      [0,0,1,0,0],
+      [0,0,1,0,0],
+      [0,0,1,0,0],
+      [0,0,1,0,0],
+      [0,0,1,0,0],
+      [0,0,1,0,0],
+      [0,1,1,1,0],
+      [0,1,1,1,0],
     ],
   },
-  // Type 1 — tall double-arm
+  // Type 1 — fire hydrant
+  // 1=body
   {
-    scale: 7,
+    scale: 8,
+    palette: ['#b82a18'],
     rows: [
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,1,1,1,0,0,0],
-      [1,1,1,1,1,1,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,1,1,0],
-      [0,0,1,1,1,1,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
-      [0,0,1,1,0,0,0],
+      [0,1,1,1,0],
+      [1,1,1,1,1],
+      [0,1,1,1,0],
+      [0,1,1,1,0],
+      [0,1,1,1,0],
+      [1,1,1,1,1],
+      [1,1,1,1,1],
     ],
   },
-  // Type 2 — short & wide cluster
+  // Type 2 — trash can
+  // 1=body  2=lid
   {
     scale: 7,
+    palette: ['#4a4a5a', '#6a6a7a'],
     rows: [
-      [0,1,1,0,0,1,1,0],
-      [0,1,1,0,0,1,1,0],
-      [1,1,1,1,1,1,1,0],
-      [1,1,1,1,0,1,1,0],
-      [0,1,1,0,0,1,1,0],
-      [0,1,1,0,0,1,1,0],
-      [0,1,1,0,0,1,1,0],
-      [0,1,1,0,0,1,1,0],
-      [0,1,1,0,0,1,1,0],
+      [0,2,2,2,0],
+      [2,2,2,2,2],
+      [1,1,1,1,1],
+      [1,1,1,1,1],
+      [1,1,1,1,1],
+      [1,1,1,1,1],
+      [1,1,1,1,1],
+      [1,1,1,1,1],
+      [0,1,1,1,0],
     ],
   },
 ];
 
-function getCactusSize(type) {
-  const d = CACTUS_DEFS[type];
+function getObstacleSize(type) {
+  const d = OBSTACLE_DEFS[type];
   return { w: d.rows[0].length * d.scale, h: d.rows.length * d.scale };
 }
 
-function drawCactus(ctx, x, groundY, type) {
-  const { rows, scale } = CACTUS_DEFS[type];
-  const totalH  = rows.length * scale;
-  const startY  = groundY - totalH;
-
+function drawObstacle(ctx, x, groundY, type) {
+  const { rows, scale, palette } = OBSTACLE_DEFS[type];
+  const totalH = rows.length * scale;
+  const startY = groundY - totalH;
   rows.forEach((row, ri) => {
-    row.forEach((filled, ci) => {
-      if (!filled) return;
-      const bx = x + ci * scale;
-      const by = startY + ri * scale;
-
-      const leftEdge  = ci === 0 || !row[ci - 1];
-      const rightEdge = ci === row.length - 1 || !row[ci + 1];
-      const topEdge   = ri === 0 || !rows[ri - 1][ci];
-
-      ctx.fillStyle = '#267a3e';
-      ctx.fillRect(bx, by, scale, scale);
-      if (leftEdge)  { ctx.fillStyle = '#3db85e'; ctx.fillRect(bx, by, 2, scale); }
-      if (rightEdge) { ctx.fillStyle = '#174d27'; ctx.fillRect(bx + scale - 2, by, 2, scale); }
-      if (topEdge)   { ctx.fillStyle = '#4dce72'; ctx.fillRect(bx, by, scale, 2); }
+    row.forEach((colorIdx, ci) => {
+      if (!colorIdx) return;
+      ctx.fillStyle = palette[colorIdx - 1];
+      ctx.fillRect(x + ci * scale, startY + ri * scale, scale, scale);
     });
   });
 }
@@ -421,8 +414,8 @@ export default function Game() {
         // Spawn obstacles
         g.nextGap -= dt;
         if (g.nextGap <= 0) {
-          const type = Math.floor(Math.random() * CACTUS_DEFS.length);
-          const sz   = getCactusSize(type);
+          const type = Math.floor(Math.random() * OBSTACLE_DEFS.length);
+          const sz   = getObstacleSize(type);
           g.obs.push({ x: g.w + 60, type, ...sz });
           const px  = MIN_GAP_PX + Math.random() * (MAX_GAP_PX - MIN_GAP_PX);
           g.nextGap = (px / g.speed) * (1000 / 60);
@@ -476,7 +469,7 @@ export default function Game() {
       drawLayer(ctx, g.near, g.nearOff, gndY, 0.82);
       drawGround(ctx, w, gndY, h, g.gndOff);
 
-      g.obs.forEach(o => drawCactus(ctx, o.x, gndY, o.type));
+      g.obs.forEach(o => drawObstacle(ctx, o.x, gndY, o.type));
 
       // Character — pick frame based on state
       const ch  = g.char;
