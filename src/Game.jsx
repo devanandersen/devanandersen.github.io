@@ -247,6 +247,82 @@ function drawGround(ctx, w, groundY, canvasH, scrollOff) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+//  Chiptune music
+// ─────────────────────────────────────────────────────────────────────────
+const MUSIC_STEP = 60 / 140 / 2; // 8th note at 140 BPM
+
+const MUSIC_MELODY = [
+  523, 659, 784, 659, 523, 659, 587,   0,
+  494, 587, 740, 587, 494, 587, 523,   0,
+  523, 659, 784, 659, 523, 659, 880, 784,
+  698, 659, 587, 523,   0,   0,   0,   0,
+];
+
+const MUSIC_BASS = [
+  131,   0, 165,   0, 196,   0, 165,   0,
+  123,   0, 147,   0, 185,   0, 147,   0,
+  131,   0, 165,   0, 196,   0, 220,   0,
+  175,   0, 131,   0, 196,   0, 131,   0,
+];
+
+function scheduleNote(ctx, freq, type, vol, t, dur) {
+  const osc  = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.8);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + dur);
+}
+
+function scheduleMusic(ctx, timerRef, loopStart) {
+  const dur = MUSIC_MELODY.length * MUSIC_STEP;
+  const t   = loopStart ?? ctx.currentTime + 0.05;
+  MUSIC_MELODY.forEach((f, i) => {
+    if (f) scheduleNote(ctx, f, 'square',   0.06, t + i * MUSIC_STEP, MUSIC_STEP);
+  });
+  MUSIC_BASS.forEach((f, i) => {
+    if (f) scheduleNote(ctx, f, 'triangle', 0.05, t + i * MUSIC_STEP, MUSIC_STEP * 1.9);
+  });
+  const ms = (t + dur - 0.4 - ctx.currentTime) * 1000;
+  timerRef.current = setTimeout(
+    () => { if (ctx.state === 'running') scheduleMusic(ctx, timerRef, t + dur); },
+    Math.max(0, ms),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Pixel gear icon
+// ─────────────────────────────────────────────────────────────────────────
+const GEAR_GRID = [
+  [0,0,1,1,1,1,0,0],
+  [0,1,1,1,1,1,1,0],
+  [1,1,1,0,0,1,1,1],
+  [1,1,0,0,0,0,1,1],
+  [1,1,0,0,0,0,1,1],
+  [1,1,1,0,0,1,1,1],
+  [0,1,1,1,1,1,1,0],
+  [0,0,1,1,1,1,0,0],
+];
+
+function GearIcon({ size = 16, color = '#4848a0' }) {
+  const px = size / 8;
+  return (
+    <svg width={size} height={size} style={{ display: 'block', imageRendering: 'pixelated' }}>
+      {GEAR_GRID.flatMap((row, r) =>
+        row.map((on, c) => on
+          ? <rect key={`${r}-${c}`} x={c * px} y={r * px} width={px} height={px} fill={color} />
+          : null
+        )
+      )}
+    </svg>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 //  Main Game component
 // ─────────────────────────────────────────────────────────────────────────
 export default function Game() {
@@ -261,6 +337,37 @@ export default function Game() {
   const [phase, setPhase] = useState('intro');
   const setPhaseRef = useRef(setPhase);
   useEffect(() => { setPhaseRef.current = setPhase; });
+
+  const [music, setMusic]               = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const audioCtxRef   = useRef(null);
+  const musicTimerRef = useRef(null);
+
+  const PHYSICS_DEFAULTS = {
+    gravity:   GRAVITY,
+    jumpForce: JUMP_FORCE,
+    initSpeed: INIT_SPEED,
+    maxSpeed:  MAX_SPEED,
+    speedRate: SPEED_RATE,
+    minGap:    MIN_GAP_PX,
+    maxGap:    MAX_GAP_PX,
+  };
+  const [physics, setPhysics] = useState(PHYSICS_DEFAULTS);
+  const physicsRef = useRef(physics);
+  useEffect(() => { physicsRef.current = physics; }, [physics]);
+
+  useEffect(() => {
+    if (!music) {
+      clearTimeout(musicTimerRef.current);
+      audioCtxRef.current?.close();
+      audioCtxRef.current = null;
+      return;
+    }
+    const ctx = new AudioContext();
+    audioCtxRef.current = ctx;
+    scheduleMusic(ctx, musicTimerRef);
+    return () => { clearTimeout(musicTimerRef.current); ctx.close(); };
+  }, [music]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -293,7 +400,7 @@ export default function Game() {
         phase:   'intro',
         score:   0,
         hiScore: parseInt(localStorage.getItem('da_hi') || '0', 10),
-        speed:   INIT_SPEED,
+        speed:   physicsRef.current.initSpeed,
         t:       0,
 
         char: {
@@ -339,7 +446,7 @@ export default function Game() {
 
       } else if (g.phase === 'playing') {
         if (g.char.grounded) {
-          g.char.vy       = JUMP_FORCE;
+          g.char.vy       = physicsRef.current.jumpForce;
           g.char.grounded = false;
         }
 
@@ -380,7 +487,7 @@ export default function Game() {
 
       // Advance run animation (legs speed up with game speed, max 16 fps)
       const animFps = playing
-        ? Math.min(16, ANIM_FPS * (g.speed / INIT_SPEED))
+        ? Math.min(16, ANIM_FPS * (g.speed / physicsRef.current.initSpeed))
         : ANIM_FPS;
       g.char.frameTick += dt;
       if (g.char.frameTick > 1000 / animFps) {
@@ -393,7 +500,7 @@ export default function Game() {
       if (playing) {
         g.t     += dt;
         g.score += g.speed * dt * SCORE_RATE * 0.1;
-        g.speed  = Math.min(MAX_SPEED, INIT_SPEED + g.score * SPEED_RATE);
+        g.speed  = Math.min(physicsRef.current.maxSpeed, physicsRef.current.initSpeed + g.score * physicsRef.current.speedRate);
 
         g.gndOff  = (g.gndOff  + g.speed) % 55;
         g.farOff  += g.speed * 0.12;
@@ -401,7 +508,7 @@ export default function Game() {
 
         // Physics
         const ch = g.char;
-        ch.vy += GRAVITY;
+        ch.vy += physicsRef.current.gravity;
         ch.y  += ch.vy;
         const floor = g.gndY - CHAR_H;
         if (ch.y >= floor) {
@@ -417,7 +524,7 @@ export default function Game() {
           const type = Math.floor(Math.random() * OBSTACLE_DEFS.length);
           const sz   = getObstacleSize(type);
           g.obs.push({ x: g.w + 60, type, ...sz });
-          const px  = MIN_GAP_PX + Math.random() * (MAX_GAP_PX - MIN_GAP_PX);
+          const px  = physicsRef.current.minGap + Math.random() * (physicsRef.current.maxGap - physicsRef.current.minGap);
           g.nextGap = (px / g.speed) * (1000 / 60);
         }
 
@@ -590,6 +697,121 @@ export default function Game() {
           }}>
             PRESS SPACE OR TAP TO RETRY
           </div>
+        </div>
+      )}
+
+      {/* ── Settings button ── */}
+      <button
+        onClick={() => setSettingsOpen(o => !o)}
+        style={{
+          position:   'absolute',
+          top:        18,
+          left:       20,
+          background: 'none',
+          border:     'none',
+          padding:    0,
+          cursor:     'pointer',
+          opacity:    settingsOpen ? 1 : 0.55,
+          transition: 'opacity 0.15s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.opacity = 1; }}
+        onMouseLeave={e => { e.currentTarget.style.opacity = settingsOpen ? 1 : 0.55; }}
+      >
+        <GearIcon size={16} color="#9090e0" />
+      </button>
+
+      {/* ── Settings panel ── */}
+      {settingsOpen && (
+        <div style={{
+          position:      'absolute',
+          top:           44,
+          left:          20,
+          right:         20,
+          maxWidth:      480,
+          background:    '#0a0818',
+          border:        '1px solid #4848a0',
+          padding:       '14px 18px',
+          fontFamily:    pxFont,
+          fontSize:      8,
+          color:         '#c8c8ee',
+          display:       'flex',
+          flexDirection: 'column',
+          gap:           12,
+          boxSizing:     'border-box',
+        }}>
+          {/* Music toggle */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 24 }}>
+            <span>MUSIC</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {['OFF', 'ON'].map(opt => (
+                <button
+                  key={opt}
+                  onClick={() => setMusic(opt === 'ON')}
+                  style={{
+                    fontFamily: pxFont, fontSize: 7,
+                    background: (opt === 'ON') === music ? '#4848a0' : 'transparent',
+                    border:     '1px solid #4848a0',
+                    color:      (opt === 'ON') === music ? '#ffffff' : '#4848a0',
+                    padding:    '4px 7px', cursor: 'pointer',
+                  }}
+                >{opt}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid #2a2a50', margin: '2px 0' }} />
+
+          {/* Grouped sliders */}
+          {[
+            { heading: 'MOVEMENT', sliders: [
+              { label: 'GRAVITY',  key: 'gravity',   min: 0.1,  max: 2,    step: 0.01,  parse: parseFloat },
+              { label: 'JUMP',     key: 'jumpForce', min: -30,  max: -2,   step: 0.5,   parse: parseFloat },
+            ]},
+            { heading: 'SPEED', sliders: [
+              { label: 'INIT',     key: 'initSpeed', min: 1,    max: 20,   step: 0.5,   parse: parseFloat },
+              { label: 'MAX',      key: 'maxSpeed',  min: 5,    max: 50,   step: 1,     parse: parseFloat },
+              { label: 'RATE',     key: 'speedRate', min: 0.001,max: 0.05, step: 0.001, parse: parseFloat },
+            ]},
+            { heading: 'OBSTACLES', sliders: [
+              { label: 'MIN GAP',  key: 'minGap',    min: 100,  max: 800,  step: 10,    parse: parseInt   },
+              { label: 'MAX GAP',  key: 'maxGap',    min: 400,  max: 1600, step: 10,    parse: parseInt   },
+            ]},
+          ].map(({ heading, sliders }) => (
+            <div key={heading}>
+              <div style={{ fontSize: 7, marginBottom: 8, letterSpacing: '0.1em' }}>{heading}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px' }}>
+                {sliders.map(({ label, key, min, max, step, parse }) => (
+                  <div key={key} style={{ flex: '1 1 calc(50% - 7px)', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#7070b0', fontSize: 7 }}>{label}</span>
+                      <span style={{ color: '#c8c8ee', fontSize: 7 }}>{physics[key]}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={min} max={max} step={step}
+                      value={physics[key]}
+                      onInput={e => setPhysics(p => ({ ...p, [key]: parse(e.target.value) }))}
+                      style={{ width: '100%', accentColor: '#4848a0', cursor: 'pointer' }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Reset */}
+          <button
+            onClick={() => setPhysics(PHYSICS_DEFAULTS)}
+            style={{
+              fontFamily: pxFont, fontSize: 7,
+              background: 'transparent', border: '1px solid #4848a0',
+              color: '#4848a0', padding: '5px 0', cursor: 'pointer', width: '100%',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#4848a0'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#4848a0'; }}
+          >
+            RESET DEFAULTS
+          </button>
         </div>
       )}
 
