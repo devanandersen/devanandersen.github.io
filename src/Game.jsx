@@ -611,6 +611,7 @@ export default function Game() {
         {[
           { label: 'GITHUB',   href: 'https://github.com/devanandersen' },
           { label: 'LINKEDIN', href: 'https://www.linkedin.com/in/devan-a-68211b73/' },
+          { label: 'TWITTER',  href: 'https://x.com/devandersen' },
         ].map(({ label, href }) => (
           <a
             key={label}
