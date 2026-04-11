@@ -431,18 +431,22 @@ export default function Game() {
       }
 
       if (playing) {
+        // Normalize all per-frame updates to 60fps-equivalent steps so the
+        // game runs at the same speed on 60Hz, 120Hz, and throttled displays.
+        const f = dt / (1000 / 60);
+
         g.t     += dt;
         g.score += g.speed * dt * SCORE_RATE * 0.1;
         g.speed  = Math.min(physicsRef.current.maxSpeed, physicsRef.current.initSpeed + g.score * physicsRef.current.speedRate);
 
-        g.gndOff  = (g.gndOff  + g.speed) % 55;
-        g.farOff  += g.speed * 0.12;
-        g.nearOff += g.speed * 0.38;
+        g.gndOff  = (g.gndOff  + g.speed * f) % 55;
+        g.farOff  += g.speed * 0.12 * f;
+        g.nearOff += g.speed * 0.38 * f;
 
         // Physics
         const ch = g.char;
-        ch.vy += physicsRef.current.gravity;
-        ch.y  += ch.vy;
+        ch.vy += physicsRef.current.gravity * f;
+        ch.y  += ch.vy * f;
         const floor = g.gndY - CHAR_H + CHAR_FOOT_OFF;
         if (ch.y >= floor) {
           ch.y        = floor;
@@ -461,7 +465,7 @@ export default function Game() {
           g.nextGap = (px / g.speed) * (1000 / 60);
         }
 
-        g.obs.forEach(o => { o.x -= g.speed; });
+        g.obs.forEach(o => { o.x -= g.speed * f; });
         g.obs = g.obs.filter(o => o.x + o.w > -60);
 
         // Collision
